@@ -31,13 +31,13 @@ from requests.packages.urllib3.exceptions import InsecureRequestWarning
 requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
 
 # ---------------------------------------------------------------------------
-# CONFIG — noms publics (visibles sur GitHub)
+# CONFIG — public names (visible on GitHub)
 # ---------------------------------------------------------------------------
 BLUEPRINT_NAME    = "Demo-DC"
 PROPERTY_SET_NAME = "GBP-Classification"
 
 # ---------------------------------------------------------------------------
-# CONFIG — credentials (chargés depuis config.py ou variables d'env)
+# CONFIG — credentials (loaded from config.py or environment variables)
 # ---------------------------------------------------------------------------
 try:
     import config as _cfg
@@ -47,7 +47,7 @@ try:
     APSTRA_USER     = os.getenv("APSTRA_USER",     _cfg.APSTRA_USER)
     APSTRA_PASS     = os.getenv("APSTRA_PASS",     _cfg.APSTRA_PASS)
 except ImportError:
-    # Fallback : variables d'environnement uniquement
+    # Fallback: environment variables only
     SKYATP_TOKEN    = os.getenv("SKYATP_TOKEN",    "YOUR_SKYATP_TOKEN_HERE")
     SKYATP_BASE_URL = os.getenv("SKYATP_BASE_URL", "https://api-eu.sky.junipersecurity.net")
     APSTRA_HOST     = os.getenv("APSTRA_HOST",     "YOUR_APSTRA_HOST_HERE")
@@ -149,18 +149,18 @@ def apstra_login() -> str:
 
 
 def resolve_blueprint_id(token: str) -> tuple:
-    """Résout le nom du blueprint en (id, label)."""
+    """Resolve the blueprint name to its (id, label)."""
     url = f"{APSTRA_BASE_URL}/api/blueprints"
     response = requests.get(url, headers={"AuthToken": token}, timeout=TIMEOUT, verify=False)
     response.raise_for_status()
     for bp in response.json().get("items", []):
         if bp.get("label") == BLUEPRINT_NAME:
             return bp["id"], bp["label"]
-    raise ValueError(f"Blueprint '{BLUEPRINT_NAME}' introuvable sur {APSTRA_HOST}")
+    raise ValueError(f"Blueprint '{BLUEPRINT_NAME}' not found on {APSTRA_HOST}")
 
 
 def resolve_property_set_id(token: str, bp_id: str) -> tuple:
-    """Résout le nom du property set en (id, label) depuis le blueprint."""
+    """Resolve the property set name to its (id, label) within the blueprint."""
     url = f"{APSTRA_BASE_URL}/api/blueprints/{bp_id}/property-sets"
     response = requests.get(url, headers={"AuthToken": token}, timeout=TIMEOUT, verify=False)
     response.raise_for_status()
@@ -168,7 +168,7 @@ def resolve_property_set_id(token: str, bp_id: str) -> tuple:
     for ps in items:
         if ps.get("label") == PROPERTY_SET_NAME:
             return ps["id"], ps["label"]
-    raise ValueError(f"Property set '{PROPERTY_SET_NAME}' introuvable dans le blueprint '{BLUEPRINT_NAME}'")
+    raise ValueError(f"Property set '{PROPERTY_SET_NAME}' not found in blueprint '{BLUEPRINT_NAME}'")
 
 
 def get_property_set(token: str, bp_id: str, ps_id: str) -> dict:
@@ -211,7 +211,7 @@ def update_quarantine_ips(token: str, current_ps: dict, new_ips: list, bp_id: st
 
 
 def commit_blueprint(token: str, bp_id: str, staging_version: int, description: str) -> None:
-    """Commit les changements stagés du blueprint avec un commentaire."""
+    """Commit staged blueprint changes with a description."""
     url = f"{APSTRA_BASE_URL}/api/blueprints/{bp_id}/deploy"
     payload = {"version": staging_version, "description": description}
     response = requests.put(
@@ -225,7 +225,7 @@ def commit_blueprint(token: str, bp_id: str, staging_version: int, description: 
 
 
 def get_staging_version(token: str, bp_id: str) -> int:
-    """Récupère la version de staging courante du blueprint."""
+    """Fetch the current staging version of the blueprint."""
     url = f"{APSTRA_BASE_URL}/api/blueprints/{bp_id}/diff-status"
     response = requests.get(url, headers={"AuthToken": token}, timeout=TIMEOUT, verify=False)
     response.raise_for_status()
@@ -284,18 +284,18 @@ def main() -> None:
         log.error("Apstra login failed: %s", exc)
         sys.exit(1)
 
-    # 4. Résoudre le blueprint par nom
+    # 4. Resolve blueprint by name
     try:
         bp_id, bp_label = resolve_blueprint_id(token)
-        log.info("Blueprint résolu : '%s' → %s", bp_label, bp_id)
+        log.info("Blueprint resolved: '%s' → %s", bp_label, bp_id)
     except ValueError as exc:
         log.error("%s", exc)
         sys.exit(1)
 
-    # 5. Résoudre le property set par nom
+    # 5. Resolve property set by name
     try:
         ps_id, ps_label = resolve_property_set_id(token, bp_id)
-        log.info("Property set résolu : '%s' → %s", ps_label, ps_id)
+        log.info("Property set resolved: '%s' → %s", ps_label, ps_id)
     except ValueError as exc:
         log.error("%s", exc)
         sys.exit(1)
@@ -316,11 +316,11 @@ def main() -> None:
         log.error("Failed to update Apstra property set: %s", exc)
         sys.exit(1)
 
-    # 8. Commit le blueprint
+    # 8. Commit the blueprint
     try:
         staging_version = get_staging_version(token, bp_id)
         commit_blueprint(token, bp_id, staging_version, "Quarantined IP updated")
-        log.info("Blueprint '%s' committed (staging v%d) : 'Quarantined IP updated'",
+        log.info("Blueprint '%s' committed (staging v%d): 'Quarantined IP updated'",
                  BLUEPRINT_NAME, staging_version)
     except Exception as exc:
         log.error("Failed to commit blueprint: %s", exc)

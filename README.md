@@ -21,7 +21,7 @@ pip install requests pyyaml
 
 ## Configuration
 
-Credentials are stored in a local `config.py` file (excluded from git via `.gitignore`).  
+All configuration is stored in a local `config.py` file (excluded from git via `.gitignore`).  
 Copy the template below and fill in your values:
 
 ```python
@@ -35,13 +35,10 @@ SKYATP_BASE_URL = "https://api-eu.sky.junipersecurity.net"
 APSTRA_HOST = "YOUR_APSTRA_IP"
 APSTRA_USER = "admin"
 APSTRA_PASS = "YOUR_PASSWORD"
-```
 
-Blueprint and property set names are set directly in the script:
-
-```python
-BLUEPRINT_NAME    = "Demo-DC"
-PROPERTY_SET_NAME = "GBP-Classification"
+# Apstra Names
+BLUEPRINT_NAME    = "YOUR_BLUEPRINT_NAME"
+PROPERTY_SET_NAME = "YOUR_PROPERTY_SET_NAME"
 ```
 
 ### Generate a SkyATP Bearer Token
@@ -80,7 +77,7 @@ python3 skyatp_to_apstra_ok.py
 | File | Description |
 |------|-------------|
 | `skyatp_to_apstra_ok.py` | Main script |
-| `config.py` | Credentials — **not versioned** (see `.gitignore`) |
+| `config.py` | All configuration & credentials — **not versioned** (see `.gitignore`) |
 | `.gitignore` | Excludes `config.py`, logs and Python artifacts |
 
 ## Notes

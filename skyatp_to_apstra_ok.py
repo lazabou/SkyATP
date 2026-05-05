@@ -40,7 +40,7 @@ try:
     APSTRA_HOST       = os.getenv("APSTRA_HOST",       _cfg.APSTRA_HOST)
     APSTRA_USER       = os.getenv("APSTRA_USER",       _cfg.APSTRA_USER)
     APSTRA_PASS       = os.getenv("APSTRA_PASS",       _cfg.APSTRA_PASS)
-    BLUEPRINT_ID      = os.getenv("BLUEPRINT_ID",      _cfg.BLUEPRINT_ID)
+    BLUEPRINT_NAME    = os.getenv("BLUEPRINT_NAME",    _cfg.BLUEPRINT_NAME)
     PROPERTY_SET_NAME = os.getenv("PROPERTY_SET_NAME", _cfg.PROPERTY_SET_NAME)
 except ImportError:
     # Fallback : variables d'environnement uniquement
@@ -49,7 +49,7 @@ except ImportError:
     APSTRA_HOST       = os.getenv("APSTRA_HOST",       "YOUR_APSTRA_HOST_HERE")
     APSTRA_USER       = os.getenv("APSTRA_USER",       "admin")
     APSTRA_PASS       = os.getenv("APSTRA_PASS",       "YOUR_APSTRA_PASSWORD_HERE")
-    BLUEPRINT_ID      = os.getenv("BLUEPRINT_ID",      "")
+    BLUEPRINT_NAME    = os.getenv("BLUEPRINT_NAME",    "")
     PROPERTY_SET_NAME = os.getenv("PROPERTY_SET_NAME", "")
 
 SKYATP_ENDPOINT = "/v2/skyatp/infected_hosts"
@@ -146,21 +146,32 @@ def apstra_login() -> str:
     return token
 
 
-def resolve_property_set_id(token: str) -> tuple:
+def resolve_blueprint_id(token: str) -> tuple:
+    """Résout le nom du blueprint en (id, label)."""
+    url = f"{APSTRA_BASE_URL}/api/blueprints"
+    response = requests.get(url, headers={"AuthToken": token}, timeout=TIMEOUT, verify=False)
+    response.raise_for_status()
+    for bp in response.json().get("items", []):
+        if bp.get("label") == BLUEPRINT_NAME:
+            return bp["id"], bp["label"]
+    raise ValueError(f"Blueprint '{BLUEPRINT_NAME}' introuvable sur {APSTRA_HOST}")
+
+
+def resolve_property_set_id(token: str, bp_id: str) -> tuple:
     """Résout le nom du property set en (id, label) depuis le blueprint."""
-    url = f"{APSTRA_BASE_URL}/api/blueprints/{BLUEPRINT_ID}/property-sets"
+    url = f"{APSTRA_BASE_URL}/api/blueprints/{bp_id}/property-sets"
     response = requests.get(url, headers={"AuthToken": token}, timeout=TIMEOUT, verify=False)
     response.raise_for_status()
     items = response.json().get("items", [])
     for ps in items:
         if ps.get("label") == PROPERTY_SET_NAME:
             return ps["id"], ps["label"]
-    raise ValueError(f"Property set '{PROPERTY_SET_NAME}' introuvable dans le blueprint {BLUEPRINT_ID}")
+    raise ValueError(f"Property set '{PROPERTY_SET_NAME}' introuvable dans le blueprint '{BLUEPRINT_NAME}'")
 
 
-def get_property_set(token: str, ps_id: str) -> dict:
+def get_property_set(token: str, bp_id: str, ps_id: str) -> dict:
     """Fetch the current property set values from the blueprint (blueprint-scoped)."""
-    url = f"{APSTRA_BASE_URL}/api/blueprints/{BLUEPRINT_ID}/property-sets/{ps_id}"
+    url = f"{APSTRA_BASE_URL}/api/blueprints/{bp_id}/property-sets/{ps_id}"
     response = requests.get(url, headers={"AuthToken": token}, timeout=TIMEOUT, verify=False)
     response.raise_for_status()
     return response.json()
@@ -174,9 +185,9 @@ def build_values_yaml(current_ps: dict, new_ips: list) -> str:
     return yaml.dump(values, default_flow_style=False, allow_unicode=True)
 
 
-def update_quarantine_ips(token: str, current_ps: dict, new_ips: list, ps_id: str) -> None:
+def update_quarantine_ips(token: str, current_ps: dict, new_ips: list, bp_id: str, ps_id: str) -> None:
     """Push updated quarantine_ips to Apstra blueprint property set (blueprint-scoped)."""
-    url = f"{APSTRA_BASE_URL}/api/blueprints/{BLUEPRINT_ID}/property-sets/{ps_id}"
+    url = f"{APSTRA_BASE_URL}/api/blueprints/{bp_id}/property-sets/{ps_id}"
 
     values_yaml = build_values_yaml(current_ps, new_ips)
     log.debug("Sending values_yaml:\n%s", values_yaml)
@@ -249,31 +260,39 @@ def main() -> None:
         log.error("Apstra login failed: %s", exc)
         sys.exit(1)
 
-    # 4. Résoudre le property set par nom
+    # 4. Résoudre le blueprint par nom
     try:
-        ps_id, ps_label = resolve_property_set_id(token)
+        bp_id, bp_label = resolve_blueprint_id(token)
+        log.info("Blueprint résolu : '%s' → %s", bp_label, bp_id)
+    except ValueError as exc:
+        log.error("%s", exc)
+        sys.exit(1)
+
+    # 5. Résoudre le property set par nom
+    try:
+        ps_id, ps_label = resolve_property_set_id(token, bp_id)
         log.info("Property set résolu : '%s' → %s", ps_label, ps_id)
     except ValueError as exc:
         log.error("%s", exc)
         sys.exit(1)
 
-    # 5. Get current property set (to preserve other values)
+    # 6. Get current property set (to preserve other values)
     try:
-        current_ps = get_property_set(token, ps_id)
+        current_ps = get_property_set(token, bp_id, ps_id)
     except Exception as exc:
         log.error("Failed to fetch Apstra property set: %s", exc)
         sys.exit(1)
 
-    # 6. Push updated quarantine_ips
+    # 7. Push updated quarantine_ips
     try:
-        update_quarantine_ips(token, current_ps, sorted(list(current_ips)), ps_id)
+        update_quarantine_ips(token, current_ps, sorted(list(current_ips)), bp_id, ps_id)
         log.info("Apstra property set updated with %d quarantine IP(s): %s",
                  len(current_ips), sorted(list(current_ips)))
     except Exception as exc:
         log.error("Failed to update Apstra property set: %s", exc)
         sys.exit(1)
 
-    # 6. Save state
+    # 8. Save state
     save_known_ips(current_ips)
     log.info("Done.")
 

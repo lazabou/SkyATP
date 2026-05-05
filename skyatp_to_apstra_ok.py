@@ -281,7 +281,7 @@ def main() -> None:
         log.error("Failed to fetch Apstra property set: %s", exc)
         sys.exit(1)
 
-    apstra_ips  = set(current_ps.get("values", {}).get("quarantine_ips", []))
+    apstra_ips  = set(current_ps.get("values", {}).get("quarantine_ips") or [])
     new_ips     = skyatp_ips - apstra_ips
     cleared_ips = apstra_ips - skyatp_ips
 

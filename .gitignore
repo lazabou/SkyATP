@@ -1,0 +1,19 @@
+# Credentials — ne JAMAIS versionner
+config.py
+
+# macOS
+.DS_Store
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.env
+*.egg-info/
+dist/
+build/
+
+# Logs & state
+*.log
+skyatp_apstra_state.json

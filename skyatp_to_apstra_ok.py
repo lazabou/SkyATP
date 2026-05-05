@@ -160,22 +160,36 @@ def build_values_yaml(current_ps: dict, new_ips: list) -> str:
 
 
 def update_quarantine_ips(token: str, current_ps: dict, new_ips: list, bp_id: str, ps_id: str) -> None:
-    """Push updated quarantine_ips to Apstra blueprint property set (blueprint-scoped)."""
-    url = f"{APSTRA_BASE_URL}/api/blueprints/{bp_id}/property-sets/{ps_id}"
-
-    values_yaml = build_values_yaml(current_ps, new_ips)
+    """Update quarantine_ips in two steps:
+    1. PUT to the global property set to update the values.
+    2. PUT to the blueprint property set to sync (reimport) from the global.
+    """
+    import yaml
+    values = current_ps["values"].copy()
+    values["quarantine_ips"] = new_ips
+    values_yaml = yaml.dump(values, default_flow_style=False, allow_unicode=True)
     log.debug("Sending values_yaml:\n%s", values_yaml)
 
+    # Step 1 — update the global property set
     payload = {
         "id": ps_id,
         "label": current_ps["label"],
         "values_yaml": values_yaml
     }
-
     response = requests.put(
-        url,
+        f"{APSTRA_BASE_URL}/api/property-sets/{ps_id}",
         headers={"AuthToken": token, "Content-Type": "application/json"},
         json=payload,
+        timeout=TIMEOUT,
+        verify=False
+    )
+    response.raise_for_status()
+
+    # Step 2 — sync (reimport) into the blueprint
+    response = requests.put(
+        f"{APSTRA_BASE_URL}/api/blueprints/{bp_id}/property-sets/{ps_id}",
+        headers={"AuthToken": token, "Content-Type": "application/json"},
+        json={"id": ps_id},
         timeout=TIMEOUT,
         verify=False
     )

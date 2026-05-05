@@ -19,6 +19,7 @@ import os
 import json
 import logging
 import sys
+import time
 import warnings
 
 # Suppress LibreSSL warning on macOS
@@ -170,7 +171,7 @@ def update_quarantine_ips(token: str, current_ps: dict, new_ips: list, bp_id: st
     values_yaml = yaml.dump(values, default_flow_style=False, allow_unicode=True)
     log.debug("Sending values_yaml:\n%s", values_yaml)
 
-    # Step 1 — update the global property set
+    # Step 1 — update the global property set (async 202)
     payload = {
         "id": ps_id,
         "label": current_ps["label"],
@@ -184,6 +185,9 @@ def update_quarantine_ips(token: str, current_ps: dict, new_ips: list, bp_id: st
         verify=False
     )
     response.raise_for_status()
+
+    # Wait for the async global update to complete before syncing
+    time.sleep(2)
 
     # Step 2 — sync (reimport) into the blueprint
     response = requests.put(

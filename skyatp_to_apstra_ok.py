@@ -35,22 +35,22 @@ requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
 # ---------------------------------------------------------------------------
 try:
     import config as _cfg
-    SKYATP_TOKEN    = os.getenv("SKYATP_TOKEN",    _cfg.SKYATP_TOKEN)
-    SKYATP_BASE_URL = os.getenv("SKYATP_BASE_URL", _cfg.SKYATP_BASE_URL)
-    APSTRA_HOST     = os.getenv("APSTRA_HOST",     _cfg.APSTRA_HOST)
-    APSTRA_USER     = os.getenv("APSTRA_USER",     _cfg.APSTRA_USER)
-    APSTRA_PASS     = os.getenv("APSTRA_PASS",     _cfg.APSTRA_PASS)
-    BLUEPRINT_ID    = os.getenv("BLUEPRINT_ID",    _cfg.BLUEPRINT_ID)
-    PROPERTY_SET_ID = os.getenv("PROPERTY_SET_ID", _cfg.PROPERTY_SET_ID)
+    SKYATP_TOKEN      = os.getenv("SKYATP_TOKEN",      _cfg.SKYATP_TOKEN)
+    SKYATP_BASE_URL   = os.getenv("SKYATP_BASE_URL",   _cfg.SKYATP_BASE_URL)
+    APSTRA_HOST       = os.getenv("APSTRA_HOST",       _cfg.APSTRA_HOST)
+    APSTRA_USER       = os.getenv("APSTRA_USER",       _cfg.APSTRA_USER)
+    APSTRA_PASS       = os.getenv("APSTRA_PASS",       _cfg.APSTRA_PASS)
+    BLUEPRINT_ID      = os.getenv("BLUEPRINT_ID",      _cfg.BLUEPRINT_ID)
+    PROPERTY_SET_NAME = os.getenv("PROPERTY_SET_NAME", _cfg.PROPERTY_SET_NAME)
 except ImportError:
     # Fallback : variables d'environnement uniquement
-    SKYATP_TOKEN    = os.getenv("SKYATP_TOKEN",    "YOUR_SKYATP_TOKEN_HERE")
-    SKYATP_BASE_URL = os.getenv("SKYATP_BASE_URL", "https://api-eu.sky.junipersecurity.net")
-    APSTRA_HOST     = os.getenv("APSTRA_HOST",     "YOUR_APSTRA_HOST_HERE")
-    APSTRA_USER     = os.getenv("APSTRA_USER",     "admin")
-    APSTRA_PASS     = os.getenv("APSTRA_PASS",     "YOUR_APSTRA_PASSWORD_HERE")
-    BLUEPRINT_ID    = os.getenv("BLUEPRINT_ID",    "")
-    PROPERTY_SET_ID = os.getenv("PROPERTY_SET_ID", "")
+    SKYATP_TOKEN      = os.getenv("SKYATP_TOKEN",      "YOUR_SKYATP_TOKEN_HERE")
+    SKYATP_BASE_URL   = os.getenv("SKYATP_BASE_URL",   "https://api-eu.sky.junipersecurity.net")
+    APSTRA_HOST       = os.getenv("APSTRA_HOST",       "YOUR_APSTRA_HOST_HERE")
+    APSTRA_USER       = os.getenv("APSTRA_USER",       "admin")
+    APSTRA_PASS       = os.getenv("APSTRA_PASS",       "YOUR_APSTRA_PASSWORD_HERE")
+    BLUEPRINT_ID      = os.getenv("BLUEPRINT_ID",      "")
+    PROPERTY_SET_NAME = os.getenv("PROPERTY_SET_NAME", "")
 
 SKYATP_ENDPOINT = "/v2/skyatp/infected_hosts"
 APSTRA_BASE_URL = f"https://{APSTRA_HOST}"
@@ -146,9 +146,21 @@ def apstra_login() -> str:
     return token
 
 
-def get_property_set(token: str) -> dict:
+def resolve_property_set_id(token: str) -> tuple:
+    """Résout le nom du property set en (id, label) depuis le blueprint."""
+    url = f"{APSTRA_BASE_URL}/api/blueprints/{BLUEPRINT_ID}/property-sets"
+    response = requests.get(url, headers={"AuthToken": token}, timeout=TIMEOUT, verify=False)
+    response.raise_for_status()
+    items = response.json().get("items", [])
+    for ps in items:
+        if ps.get("label") == PROPERTY_SET_NAME:
+            return ps["id"], ps["label"]
+    raise ValueError(f"Property set '{PROPERTY_SET_NAME}' introuvable dans le blueprint {BLUEPRINT_ID}")
+
+
+def get_property_set(token: str, ps_id: str) -> dict:
     """Fetch the current property set values from the blueprint (blueprint-scoped)."""
-    url = f"{APSTRA_BASE_URL}/api/blueprints/{BLUEPRINT_ID}/property-sets/{PROPERTY_SET_ID}"
+    url = f"{APSTRA_BASE_URL}/api/blueprints/{BLUEPRINT_ID}/property-sets/{ps_id}"
     response = requests.get(url, headers={"AuthToken": token}, timeout=TIMEOUT, verify=False)
     response.raise_for_status()
     return response.json()
@@ -162,15 +174,15 @@ def build_values_yaml(current_ps: dict, new_ips: list) -> str:
     return yaml.dump(values, default_flow_style=False, allow_unicode=True)
 
 
-def update_quarantine_ips(token: str, current_ps: dict, new_ips: list) -> None:
+def update_quarantine_ips(token: str, current_ps: dict, new_ips: list, ps_id: str) -> None:
     """Push updated quarantine_ips to Apstra blueprint property set (blueprint-scoped)."""
-    url = f"{APSTRA_BASE_URL}/api/blueprints/{BLUEPRINT_ID}/property-sets/{PROPERTY_SET_ID}"
+    url = f"{APSTRA_BASE_URL}/api/blueprints/{BLUEPRINT_ID}/property-sets/{ps_id}"
 
     values_yaml = build_values_yaml(current_ps, new_ips)
     log.debug("Sending values_yaml:\n%s", values_yaml)
 
     payload = {
-        "id": PROPERTY_SET_ID,
+        "id": ps_id,
         "label": current_ps["label"],
         "values_yaml": values_yaml
     }
@@ -237,16 +249,24 @@ def main() -> None:
         log.error("Apstra login failed: %s", exc)
         sys.exit(1)
 
-    # 4. Get current property set (to preserve other values)
+    # 4. Résoudre le property set par nom
     try:
-        current_ps = get_property_set(token)
+        ps_id, ps_label = resolve_property_set_id(token)
+        log.info("Property set résolu : '%s' → %s", ps_label, ps_id)
+    except ValueError as exc:
+        log.error("%s", exc)
+        sys.exit(1)
+
+    # 5. Get current property set (to preserve other values)
+    try:
+        current_ps = get_property_set(token, ps_id)
     except Exception as exc:
         log.error("Failed to fetch Apstra property set: %s", exc)
         sys.exit(1)
 
-    # 5. Push updated quarantine_ips
+    # 6. Push updated quarantine_ips
     try:
-        update_quarantine_ips(token, current_ps, sorted(list(current_ips)))
+        update_quarantine_ips(token, current_ps, sorted(list(current_ips)), ps_id)
         log.info("Apstra property set updated with %d quarantine IP(s): %s",
                  len(current_ips), sorted(list(current_ips)))
     except Exception as exc:

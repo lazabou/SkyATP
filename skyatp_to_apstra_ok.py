@@ -209,6 +209,28 @@ def update_quarantine_ips(token: str, current_ps: dict, new_ips: list, bp_id: st
     )
     response.raise_for_status()
 
+
+def commit_blueprint(token: str, bp_id: str, staging_version: int, description: str) -> None:
+    """Commit les changements stagés du blueprint avec un commentaire."""
+    url = f"{APSTRA_BASE_URL}/api/blueprints/{bp_id}/deploy"
+    payload = {"version": staging_version, "description": description}
+    response = requests.put(
+        url,
+        headers={"AuthToken": token, "Content-Type": "application/json"},
+        json=payload,
+        timeout=TIMEOUT,
+        verify=False
+    )
+    response.raise_for_status()
+
+
+def get_staging_version(token: str, bp_id: str) -> int:
+    """Récupère la version de staging courante du blueprint."""
+    url = f"{APSTRA_BASE_URL}/api/blueprints/{bp_id}/diff-status"
+    response = requests.get(url, headers={"AuthToken": token}, timeout=TIMEOUT, verify=False)
+    response.raise_for_status()
+    return response.json()["staging_version"]
+
 # ---------------------------------------------------------------------------
 # MAIN
 # ---------------------------------------------------------------------------
@@ -294,7 +316,17 @@ def main() -> None:
         log.error("Failed to update Apstra property set: %s", exc)
         sys.exit(1)
 
-    # 8. Save state
+    # 8. Commit le blueprint
+    try:
+        staging_version = get_staging_version(token, bp_id)
+        commit_blueprint(token, bp_id, staging_version, "Quarantined IP updated")
+        log.info("Blueprint '%s' committed (staging v%d) : 'Quarantined IP updated'",
+                 BLUEPRINT_NAME, staging_version)
+    except Exception as exc:
+        log.error("Failed to commit blueprint: %s", exc)
+        sys.exit(1)
+
+    # 9. Save state
     save_known_ips(current_ips)
     log.info("Done.")
 

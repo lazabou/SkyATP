@@ -31,26 +31,28 @@ from requests.packages.urllib3.exceptions import InsecureRequestWarning
 requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
 
 # ---------------------------------------------------------------------------
-# CONFIG — chargé depuis config.py (non versionné) ou variables d'env
+# CONFIG — noms publics (visibles sur GitHub)
+# ---------------------------------------------------------------------------
+BLUEPRINT_NAME    = "Demo-DC"
+PROPERTY_SET_NAME = "GBP-Classification"
+
+# ---------------------------------------------------------------------------
+# CONFIG — credentials (chargés depuis config.py ou variables d'env)
 # ---------------------------------------------------------------------------
 try:
     import config as _cfg
-    SKYATP_TOKEN      = os.getenv("SKYATP_TOKEN",      _cfg.SKYATP_TOKEN)
-    SKYATP_BASE_URL   = os.getenv("SKYATP_BASE_URL",   _cfg.SKYATP_BASE_URL)
-    APSTRA_HOST       = os.getenv("APSTRA_HOST",       _cfg.APSTRA_HOST)
-    APSTRA_USER       = os.getenv("APSTRA_USER",       _cfg.APSTRA_USER)
-    APSTRA_PASS       = os.getenv("APSTRA_PASS",       _cfg.APSTRA_PASS)
-    BLUEPRINT_NAME    = os.getenv("BLUEPRINT_NAME",    _cfg.BLUEPRINT_NAME)
-    PROPERTY_SET_NAME = os.getenv("PROPERTY_SET_NAME", _cfg.PROPERTY_SET_NAME)
+    SKYATP_TOKEN    = os.getenv("SKYATP_TOKEN",    _cfg.SKYATP_TOKEN)
+    SKYATP_BASE_URL = os.getenv("SKYATP_BASE_URL", _cfg.SKYATP_BASE_URL)
+    APSTRA_HOST     = os.getenv("APSTRA_HOST",     _cfg.APSTRA_HOST)
+    APSTRA_USER     = os.getenv("APSTRA_USER",     _cfg.APSTRA_USER)
+    APSTRA_PASS     = os.getenv("APSTRA_PASS",     _cfg.APSTRA_PASS)
 except ImportError:
     # Fallback : variables d'environnement uniquement
-    SKYATP_TOKEN      = os.getenv("SKYATP_TOKEN",      "YOUR_SKYATP_TOKEN_HERE")
-    SKYATP_BASE_URL   = os.getenv("SKYATP_BASE_URL",   "https://api-eu.sky.junipersecurity.net")
-    APSTRA_HOST       = os.getenv("APSTRA_HOST",       "YOUR_APSTRA_HOST_HERE")
-    APSTRA_USER       = os.getenv("APSTRA_USER",       "admin")
-    APSTRA_PASS       = os.getenv("APSTRA_PASS",       "YOUR_APSTRA_PASSWORD_HERE")
-    BLUEPRINT_NAME    = os.getenv("BLUEPRINT_NAME",    "")
-    PROPERTY_SET_NAME = os.getenv("PROPERTY_SET_NAME", "")
+    SKYATP_TOKEN    = os.getenv("SKYATP_TOKEN",    "YOUR_SKYATP_TOKEN_HERE")
+    SKYATP_BASE_URL = os.getenv("SKYATP_BASE_URL", "https://api-eu.sky.junipersecurity.net")
+    APSTRA_HOST     = os.getenv("APSTRA_HOST",     "YOUR_APSTRA_HOST_HERE")
+    APSTRA_USER     = os.getenv("APSTRA_USER",     "admin")
+    APSTRA_PASS     = os.getenv("APSTRA_PASS",     "YOUR_APSTRA_PASSWORD_HERE")
 
 SKYATP_ENDPOINT = "/v2/skyatp/infected_hosts"
 APSTRA_BASE_URL = f"https://{APSTRA_HOST}"

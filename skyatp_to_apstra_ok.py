@@ -147,8 +147,8 @@ def apstra_login() -> str:
 
 
 def get_property_set(token: str) -> dict:
-    """Fetch the current property set values from Apstra."""
-    url = f"{APSTRA_BASE_URL}/api/property-sets/{PROPERTY_SET_ID}"
+    """Fetch the current property set values from the blueprint (blueprint-scoped)."""
+    url = f"{APSTRA_BASE_URL}/api/blueprints/{BLUEPRINT_ID}/property-sets/{PROPERTY_SET_ID}"
     response = requests.get(url, headers={"AuthToken": token}, timeout=TIMEOUT, verify=False)
     response.raise_for_status()
     return response.json()
@@ -163,8 +163,8 @@ def build_values_yaml(current_ps: dict, new_ips: list) -> str:
 
 
 def update_quarantine_ips(token: str, current_ps: dict, new_ips: list) -> None:
-    """Push updated quarantine_ips to Apstra using values_yaml format."""
-    url = f"{APSTRA_BASE_URL}/api/property-sets/{PROPERTY_SET_ID}"
+    """Push updated quarantine_ips to Apstra blueprint property set (blueprint-scoped)."""
+    url = f"{APSTRA_BASE_URL}/api/blueprints/{BLUEPRINT_ID}/property-sets/{PROPERTY_SET_ID}"
 
     values_yaml = build_values_yaml(current_ps, new_ips)
     log.debug("Sending values_yaml:\n%s", values_yaml)

@@ -20,8 +20,6 @@ import json
 import logging
 import sys
 import warnings
-from datetime import datetime, timezone
-from pathlib import Path
 
 # Suppress LibreSSL warning on macOS
 warnings.filterwarnings("ignore", category=Warning, module="urllib3")
@@ -60,9 +58,6 @@ APSTRA_BASE_URL = f"https://{APSTRA_HOST}"
 # Log file — set to None to log to stdout only
 LOG_FILE        = os.path.expanduser("~/skyatp_to_apstra.log")
 
-# State file to track changes between runs
-STATE_FILE      = Path("/var/tmp/skyatp_apstra_state.json")
-
 # Request timeout in seconds
 TIMEOUT         = 30
 
@@ -80,29 +75,6 @@ logging.basicConfig(
     handlers=handlers,
 )
 log = logging.getLogger(__name__)
-
-# ---------------------------------------------------------------------------
-# STATE
-# ---------------------------------------------------------------------------
-
-def load_known_ips() -> set:
-    if STATE_FILE.exists():
-        try:
-            data = json.loads(STATE_FILE.read_text())
-            return set(data.get("ips", []))
-        except (json.JSONDecodeError, OSError) as exc:
-            log.warning("Could not read state file (%s) — starting fresh.", exc)
-    return set()
-
-
-def save_known_ips(ips: set) -> None:
-    try:
-        STATE_FILE.write_text(json.dumps({
-            "ips": list(ips),
-            "updated": datetime.now(timezone.utc).isoformat()
-        }))
-    except OSError as exc:
-        log.error("Could not write state file: %s", exc)
 
 # ---------------------------------------------------------------------------
 # SKYATP
@@ -246,9 +218,6 @@ def main() -> None:
         log.error("No Apstra password configured. Set APSTRA_PASS env variable.")
         sys.exit(1)
 
-    # Load previous state
-    known_ips = load_known_ips()
-
     # 1. Fetch infected IPs from SkyATP
     try:
         infected_ips = fetch_infected_ips()
@@ -259,24 +228,11 @@ def main() -> None:
         log.error("SkyATP connection error: %s", exc)
         sys.exit(1)
 
-    current_ips = set(infected_ips)
-    new_ips     = current_ips - known_ips
-    cleared_ips = known_ips - current_ips
+    skyatp_ips = set(infected_ips)
+    log.info("SkyATP infected hosts: %d IP(s) — %s",
+             len(skyatp_ips), sorted(skyatp_ips) or "none")
 
-    log.info("SkyATP infected hosts: %d total | %d new | %d cleared",
-             len(current_ips), len(new_ips), len(cleared_ips))
-
-    for ip in sorted(new_ips):
-        log.warning("  [NEW]     %s", ip)
-    for ip in sorted(cleared_ips):
-        log.info("  [CLEARED] %s", ip)
-
-    # 2. Only update Apstra if the list has changed
-    if not new_ips and not cleared_ips:
-        log.info("No changes — skipping Apstra update.")
-        return
-
-    # 3. Login to Apstra
+    # 2. Login to Apstra
     try:
         token = apstra_login()
         log.info("Apstra login successful.")
@@ -284,7 +240,7 @@ def main() -> None:
         log.error("Apstra login failed: %s", exc)
         sys.exit(1)
 
-    # 4. Resolve blueprint by name
+    # 3. Resolve blueprint by name
     try:
         bp_id, bp_label = resolve_blueprint_id(token)
         log.info("Blueprint resolved: '%s' → %s", bp_label, bp_id)
@@ -292,7 +248,7 @@ def main() -> None:
         log.error("%s", exc)
         sys.exit(1)
 
-    # 5. Resolve property set by name
+    # 4. Resolve property set by name
     try:
         ps_id, ps_label = resolve_property_set_id(token, bp_id)
         log.info("Property set resolved: '%s' → %s", ps_label, ps_id)
@@ -300,18 +256,35 @@ def main() -> None:
         log.error("%s", exc)
         sys.exit(1)
 
-    # 6. Get current property set (to preserve other values)
+    # 5. Fetch current property set from Apstra (SSOT)
     try:
         current_ps = get_property_set(token, bp_id, ps_id)
     except Exception as exc:
         log.error("Failed to fetch Apstra property set: %s", exc)
         sys.exit(1)
 
+    apstra_ips  = set(current_ps.get("values", {}).get("quarantine_ips", []))
+    new_ips     = skyatp_ips - apstra_ips
+    cleared_ips = apstra_ips - skyatp_ips
+
+    log.info("Apstra quarantine_ips: %d IP(s) — %s",
+             len(apstra_ips), sorted(apstra_ips) or "none")
+
+    for ip in sorted(new_ips):
+        log.warning("  [NEW]     %s", ip)
+    for ip in sorted(cleared_ips):
+        log.info("  [CLEARED] %s", ip)
+
+    # 6. Only update Apstra if the lists differ
+    if not new_ips and not cleared_ips:
+        log.info("No changes — Apstra is already in sync with SkyATP.")
+        return
+
     # 7. Push updated quarantine_ips
     try:
-        update_quarantine_ips(token, current_ps, sorted(list(current_ips)), bp_id, ps_id)
+        update_quarantine_ips(token, current_ps, sorted(skyatp_ips), bp_id, ps_id)
         log.info("Apstra property set updated with %d quarantine IP(s): %s",
-                 len(current_ips), sorted(list(current_ips)))
+                 len(skyatp_ips), sorted(skyatp_ips))
     except Exception as exc:
         log.error("Failed to update Apstra property set: %s", exc)
         sys.exit(1)
@@ -326,8 +299,6 @@ def main() -> None:
         log.error("Failed to commit blueprint: %s", exc)
         sys.exit(1)
 
-    # 9. Save state
-    save_known_ips(current_ips)
     log.info("Done.")
 
 
